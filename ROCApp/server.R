@@ -1,3 +1,4 @@
+
 options(shiny.maxRequestSize = 9*10240^2)
 
 function(input, output, session) {
@@ -65,15 +66,16 @@ function(input, output, session) {
       # conditional panel: on the Overview tab, include data upload material
       tabPanel("Allotment boundaries",
             
-               # function to navigate to, and read in geodatabase of allotment boundaries
-               fileInput('ALLOTS', 'Read in allotment boundaries as geodatabase (".gdb") file. 
-                         For now, located at data/file-geodatabase/Payette.gdb.',
+               # function to navigate to, and read in geodatabase of allotment boun(daries
+               fileInput('ALLOTS', 'Read in allotment boundaries as ESRI shapefile (extension .shp)',
                          accept = c(
-                           '.gdb'
+                           '.gdb',
+                           'shp.'
                          )
-               ),
+               ), 
                
-               directoryInput('directory', label = 'select a directory')
+               directoryInput('ALLOTSdirectory', label = 'If allotment boundaries are stored as .gdb file, navigate to appropriate directory
+                   (For now, located at data/file-geodatabase/Payette.gdb).')
                
 
       ), # close Allotment boundaries tab
@@ -87,6 +89,21 @@ function(input, output, session) {
                'Read in bighorn core herd home range boundaries as geodatabase (".gdb") file.',
                
                accept = c('.gdb')
+               ),
+               
+               # Conditional panel that opens AFTER csv is loaded for specifying field names
+               conditionalPanel(
+                 condition = "output.bighornDataUploaded == true",
+                 # drop-downs for user to specify long, lat, id, and pop fields.
+                 'Specify field names for uploaded dataset',
+                 selectInput("bighornRawNamesPop",
+                             label = "Population", ""),
+                 selectInput("bighornRawNamesLong",
+                             label = "Longitude", ""),
+                 selectInput("bighornRawNamesLat",
+                             label = "Latitude", ""),
+                 selectInput("bighornRawNamesID",
+                             label = "Individual ID", "")
                )
                
        ), # close Core herd home range boundaries tab
@@ -168,10 +185,10 @@ function(input, output, session) {
   observeEvent(
     ignoreNULL = TRUE,
     eventExpr = {
-      input$directory
+      input$ALLOTSdirectory
     },
     handlerExpr = {
-      if (input$directory > 0) {
+      if (input$ALLOTSdirectory > 0) {
         # condition prevents handler execution on initial app launch
         
         # launch the directory selection dialog with initial path read from the widget
@@ -183,10 +200,90 @@ function(input, output, session) {
     }
   )
   
-  #gdbPath <- paste(input$directory, ".gdb", sep = "")
+
+  observe({
+    updateSelectInput(
+      session,
+      "bighornRawNamesLong",
+      choices = names(bighornData2()))
+  })
   
+  observe({
+    updateSelectInput(
+      session,
+      "bighornRawNamesLat",
+      choices = names(bighornData2()))
+  })
   
+  observe({
+    updateSelectInput(
+      session,
+      "bighornRawNamesID",
+      choices = names(bighornData2()))
+  })
   
+  observe({
+    updateSelectInput(
+      session,
+      "bighornRawNamesPop",
+      choices = names(bighornData2()))
+  })
+  
+  # reactive test for whether bighornData have been uploaded on Overview panel.
+  # Prompts conditionalPanel with field specifications to open.
+  
+  ## store data reactively
+  bighornData2 <- reactive({
+    req(input$bighornData)
+    inFile <- input$bighornData
+    if (is.null(inFile)) return(NULL)
+    data <- read.csv(inFile$datapath, header = TRUE)
+    
+    updateSelectInput(session, inputId = 'lat', label = 'Latitude',
+                      choices = names(data), selected = names(data))
+    updateSelectInput(session, inputId = 'long', label = 'Longitude',
+                      choices = names(data), selected = names(data)[2])
+    updateSelectInput(session, inputId = 'bighornRawNamesLong', label = 'Herd',
+                      choices = names(data), selected = names(data)[2])
+    updateSelectInput(session, inputId = 'bighornRawNamesLong', label = 'Longitude',
+                      choices = names(data), selected = names(data)[2])
+    updateSelectInput(session, inputId = 'bighornRawNamesLat', label = 'Latitude',
+                      choices = names(data), selected = names(data)[2])
+    updateSelectInput(session, inputId = 'bighornRawNamesID', label = 'SheepID',
+                      choices = names(data), selected = names(data)[2])
+    
+    return(data)
+  })
+  
+  output$bighornDataUploaded <- reactive({
+    return(!is.null(bighornData2()))
+  })
+  outputOptions(output, 'bighornDataUploaded', suspendWhenHidden=FALSE)
+  
+  # reactive test for whether Population field has been selected.
+  # Prompts conditionalPanel with population name selection to open.
+  bighornHerdNamesFun <- reactive({
+    req(input$bighornRawNamesPop)
+    PopField <- input$bighornRawNamesPop
+    bighorn.dat.temp <- bighornData2()
+    HerdNames <- levels(factor(bighorn.dat.temp[PopField][, 1]))
+    return(HerdNames)
+  })
+  
+  ## function that reads user-selected field names back in to the dataframe
+  # to specify lat, long, individ, pop; and subsets to those fields
+  preppedbighornData <- reactive({
+    inFile <- bighornData2()
+    longIn <- input$bighornRawNamesLong
+    latIn <- input$bighornRawNamesLat
+    idIn <- input$bighornRawNamesID
+    popIn <- input$bighornRawNamesPop
+    names.vec <- c(longIn, latIn, idIn, popIn)
+    outFile <- subset(inFile, select = names.vec)
+    inFile$NEW <- inFile$longIn
+    
+    return(outFile)
+  })
   
   
   
